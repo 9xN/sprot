@@ -11,10 +11,11 @@ export GIO_EXTRA_MODULES=/usr/lib/x86_64-linux-gnu/gio/modules/
 
 download_speed() {
 start=$(date +%s)
-wget -O /dev/null http://speedtest.wdc01.softlayer.com/downloads/test500.zip
+wget -q -O /dev/null http://speedtest.wdc01.softlayer.com/downloads/test500.zip
 end=$(date +%s)
 speed=$((500 / (end - start)))
-dl_speed="Download speed: $speed Mb/s"
+echo "Testing download speed..."
+echo "Download speed: $speed Mb/s"
 }
 
 print_info() {
@@ -2721,7 +2722,7 @@ old_functions() {
     get_line_break() { :; }
     get_cpu_usage() { :; }
 }
-networking() {
+main() {
     cache_uname
     get_os
     # Load default config.
@@ -2729,6 +2730,7 @@ networking() {
     get_simple "$@"
     get_distro
     get_bold
+    download_speed
     [[ $stdout == on ]] && stdout
     # Minix doesn't support these sequences.
     [[ $TERM != minix && $stdout != on ]] && {
@@ -2742,6 +2744,8 @@ networking() {
     print_info
     return 0
 }
+
+networking() {
 IPTABLES="/sbin/iptables"
 IP6TABLES="/sbin/ip6tables"
 MODPROBE="/sbin/modprobe"
@@ -2911,5 +2915,10 @@ sudo ip6tables -A INPUT -p tcp --dport 21 -j ACCEPT
 sudo ip6tables -A INPUT -p tcp --dport 25 -j ACCEPT
 sudo ip6tables -L -n --line-numbers
 sudo ip6tables -D INPUT -p tcp --dport 21 -j ACCEPT
+}
 main "$@"
-networking
+
+if [[ "$1" == "--set-up" ]]; then
+    networking
+fi
+
