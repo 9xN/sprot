@@ -8,6 +8,15 @@ shopt -s nocasematch
 LC_ALL=C
 LANG=C
 export GIO_EXTRA_MODULES=/usr/lib/x86_64-linux-gnu/gio/modules/
+
+download_speed() {
+start=$(date +%s)
+wget -O /dev/null http://speedtest.wdc01.softlayer.com/downloads/test500.zip
+end=$(date +%s)
+speed=$((500 / (end - start)))
+dl_speed="Download speed: $speed Mb/s"
+}
+
 print_info() {
     info title
     info underline
