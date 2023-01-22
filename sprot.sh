@@ -44,7 +44,7 @@ esc() {
     esac
 }
 
-# Print a sequence to the terminal.
+
 esc_p() {
     esc "$@"
     printf '%s' "$e"
@@ -57,7 +57,6 @@ has() {
 
 log() {
 
-    # End here if no data was found.
     [ "$2" ] || return
 
     name=$1
@@ -75,20 +74,17 @@ log() {
     printf '%s' "$name"
     esc_p SGR 0
 
-    # Print the info name and info data separator, if applicable.
     [ "$use_seperator" ] || printf %s "$PF_SEP"
 
     esc_p CUB "${#name}"
     esc_p CUF "${PF_ALIGN:-$info_length}"
 
-    # Print the info data, color it and strip all leading whitespace
-    # from the string.
+
     esc_p SGR "3${PF_COL2-9}"
     printf '%s' "$info"
     esc_p SGR 0
     printf '\n'
 
-    # Keep track of the number of times 'log()' has been run.
     info_height=$((${info_height:-0} + 1))
 }
 
@@ -139,64 +135,34 @@ get_os() {
                 done < /etc/os-release
 
             else
-                # Special cases for (independent) distributions which
-                # don't follow any os-release/lsb standards whatsoever.
+
                 has crux && distro=$(crux)
                 has guix && distro='Guix System'
             fi
 
-            # 'os-release' and 'lsb_release' sometimes add quotes
-            # around the distribution name, strip them.
             distro=${distro##[\"\']}
             distro=${distro%%[\"\']}
 
-            # Check to see if we're running Bedrock Linux which is
-            # very unique. This simply checks to see if the user's
-            # PATH contains a Bedrock specific value.
             case $PATH in
                 (*/bedrock/cross/*)
                     distro='Bedrock Linux'
                 ;;
             esac
 
-            # Check to see if Linux is running in Windows 10 under
-            # WSL1 (Windows subsystem for Linux [version 1]) and
-            # append a string accordingly.
-            #
-            # If the kernel version string ends in "-Microsoft",
-            # we're very likely running under Windows 10 in WSL1.
             if [ "$WSLENV" ]; then
                 distro="${distro}${WSLENV+ on Windows 10 [WSL2]}"
 
-            # Check to see if Linux is running in Windows 10 under
-            # WSL2 (Windows subsystem for Linux [version 2]) and
-            # append a string accordingly.
-            #
-            # This checks to see if '$WSLENV' is defined. This
-            # appends the Windows 10 string even if '$WSLENV' is
-            # empty. We only need to check that is has been _exported_.
+
             elif [ -z "${kernel%%*-Microsoft}" ]; then
                 distro="$distro on Windows 10 [WSL1]"
             fi
         ;;
 
         (Darwin*)
-            # Parse the SystemVersion.plist file to grab the macOS
-            # version. The file is in the following format:
-            #
-            # <key>ProductVersion</key>
-            # <string>10.14.6</string>
-            #
-            # 'IFS' is set to '<>' to enable splitting between the
-            # keys and a second 'read' is used to operate on the
-            # next line directly after a match.
-            #
-            # '_' is used to nullify a field. '_ _ line _' basically
-            # says "populate $line with the third field's contents".
+
             while IFS='<>' read -r _ _ line _; do
                 case $line in
-                    # Match 'ProductVersion' and read the next line
-                    # directly as it contains the key's value.
+
                     ProductVersion)
                         IFS='<>' read -r _ _ mac_version _
                         continue
@@ -209,9 +175,6 @@ get_os() {
                 esac
             done < /System/Library/CoreServices/SystemVersion.plist
 
-            # Use the ProductVersion to determine which macOS/OS X codename
-            # the system has. As far as I'm aware there's no "dynamic" way
-            # of grabbing this information.
             case $mac_version in
                 (10.4*)  distro='Mac OS X Tiger' ;;
                 (10.5*)  distro='Mac OS X Leopard' ;;
@@ -230,7 +193,6 @@ get_os() {
                 (*)      distro='macOS' ;;
             esac
 
-            # Use the ProductName to determine if we're running in iOS.
             case $mac_product in
                 (iP*) distro='iOS' ;;
             esac
@@ -239,28 +201,23 @@ get_os() {
         ;;
 
         (Haiku)
-            # Haiku uses 'uname -v' for version information
-            # instead of 'uname -r' which only prints '1'.
+
             distro=$(uname -sv)
         ;;
 
         (Minix|DragonFly)
             distro="$os $kernel"
 
-            # Minix and DragonFly don't support the escape
-            # sequences used, clear the exit trap.
             trap '' EXIT
         ;;
 
         (SunOS)
-            # Grab the first line of the '/etc/release' file
-            # discarding everything after '('.
+
             IFS='(' read -r distro _ < /etc/release
         ;;
 
         (OpenBSD*)
-            # Show the OpenBSD version type (current if present).
-            # kern.version=OpenBSD 6.6-current (GENERIC.MP) ...
+
             IFS=' =' read -r _ distro openbsd_ver _ <<-EOF
 				$(sysctl kern.version)
 			EOF
@@ -273,8 +230,7 @@ get_os() {
         ;;
 
         (*)
-            # Catch all to ensure '$distro' is never blank.
-            # This also handles the BSDs.
+
             distro="$os $kernel"
         ;;
     esac
@@ -282,23 +238,19 @@ get_os() {
 
 get_kernel() {
     case $os in
-        # Don't print kernel output on some systems as the
-        # OS name includes it.
+
         (*BSD*|Haiku|Minix)
             return
         ;;
     esac
 
-    # '$kernel' is the cached output of 'uname -r'.
     log kernel "$kernel" >&6
 }
 
 get_host() {
     case $os in
         (Linux*)
-            # Despite what these files are called, version doesn't
-            # always contain the version nor does name always contain
-            # the name.
+
             read -r name    < /sys/devices/virtual/dmi/id/product_name
             read -r version < /sys/devices/virtual/dmi/id/product_version
             read -r model   < /sys/firmware/devicetree/base/model
@@ -324,33 +276,14 @@ get_host() {
         ;;
     esac
 
-    # Turn the host string into an argument list so we can iterate
-    # over it and remove OEM strings and other information which
-    # shouldn't be displayed.
-    #
-    # Disable the shellcheck warning for word-splitting
-    # as it's safe and intended ('set -f' disables globbing).
-    # shellcheck disable=2046,2086
     {
         set -f
         set +f -- $host
         host=
     }
 
-    # Iterate over the host string word by word as a means of stripping
-    # unwanted and OEM information from the string as a whole.
-    #
-    # This could have been implemented using a long 'sed' command with
-    # a list of word replacements, however I want to show that something
-    # like this is possible in pure sh.
-    #
-    # This string reconstruction is needed as some OEMs either leave the
-    # identification information as "To be filled by OEM", "Default",
-    # "undefined" etc and we shouldn't print this to the screen.
     for word do
-        # This works by reconstructing the string by excluding words
-        # found in the "blacklist" below. Only non-matches are appended
-        # to the final host string.
+
         case $word in
            (To      | [Bb]e      | [Ff]illed | [Bb]y  | O.E.M.  | OEM  |\
             Not     | Applicable | Specified | System | Product | Name |\
@@ -649,15 +582,6 @@ get_memory() {
         (SunOS)
             hw_pagesize=$(pagesize)
 
-            # 'kstat' outputs memory in the following format:
-            # unix:0:system_pages:pagestotal	1046397
-            # unix:0:system_pages:pagesfree		885018
-            #
-            # This simply uses the first "element" (white-space
-            # separated) as the key and the second element as the
-            # value.
-            #
-            # A variable is then assigned based on the key.
             while read -r key val; do
                 case $key in
                     (*total)
@@ -679,11 +603,7 @@ get_memory() {
         ;;
 
         (IRIX)
-            # Read the memory information from the 'top' command. Parse
-            # and split each line until we reach the line starting with
-            # "Memory".
-            #
-            # Example output: Memory: 160M max, 147M avail, .....
+
             while IFS=' :' read -r label mem_full _ mem_free _; do
                 case $label in
                     (Memory)
@@ -789,8 +709,7 @@ get_shell() {
 }
 
 get_editor() {
-    # Display the value of '$VISUAL', if it's empty, display the
-    # value of '$EDITOR'.
+
     editor=${VISUAL:-"$EDITOR"}
 
     log editor "${editor##*/}" >&6
@@ -811,702 +730,6 @@ get_palette() {
         " " " " " >&6
 }
 
-get_ascii() {
-
-    read_ascii() {
-
-        PF_COL1=${PF_COL1:-${1:-7}}
-        PF_COL3=${PF_COL3:-$((${1:-7}%8+1))}
-
-        while IFS= read -r line; do
-            ascii="$ascii$line
-"
-        done
-    }
-
-
-    case ${1:-${PF_ASCII:-${distro:-$os}}} in
-        ([Aa]lpine*)
-            read_ascii 4 <<-EOF
-				${c4}   /\\ /\\
-				  /${c7}/ ${c4}\\  \\
-				 /${c7}/   ${c4}\\  \\
-				/${c7}//    ${c4}\\  \\
-				${c7}//      ${c4}\\  \\
-				         ${c4}\\
-			EOF
-        ;;
-
-        ([Aa]ndroid*)
-            read_ascii 2 <<-EOF
-				${c2}  ;,           ,;
-				${c2}   ';,.-----.,;'
-				${c2}  ,'           ',
-				${c2} /    O     O    \\
-				${c2}|                 |
-				${c2}'-----------------'
-			EOF
-        ;;
-
-        ([Aa]rch*)
-            read_ascii 4 <<-EOF
-				${c6}       /\\
-				${c6}      /  \\
-				${c6}     /\\   \\
-				${c4}    /      \\
-				${c4}   /   ,,   \\
-				${c4}  /   |  |  -\\
-				${c4} /_-''    ''-_\\
-			EOF
-        ;;
-
-        ([Aa]rco*)
-            read_ascii 4 <<-EOF
-				${c4}      /\\
-				${c4}     /  \\
-				${c4}    / /\\ \\
-				${c4}   / /  \\ \\
-				${c4}  / /    \\ \\
-				${c4} / / _____\\ \\
-				${c4}/_/  \`----.\\_\\
-			EOF
-        ;;
-
-        ([Aa]rtix*)
-            read_ascii 6 <<-EOF
-				${c4}      /\\
-				${c4}     /  \\
-				${c4}    /\`'.,\\
-				${c4}   /     ',
-				${c4}  /      ,\`\\
-				${c4} /   ,.'\`.  \\
-				${c4}/.,'\`     \`'.\\
-			EOF
-        ;;
-
-        ([Bb]edrock*)
-            read_ascii 4 <<-EOF
-				${c7}__
-				${c7}\\ \\___
-				${c7} \\  _ \\
-				${c7}  \\___/
-			EOF
-        ;;
-
-        ([Bb]uildroot*)
-            read_ascii 3 <<-EOF
-				${c3}   ___
-				${c3} / \`   \\
-				${c3}|   :  :|
-				${c3}-. _:__.-
-				${c3}  \` ---- \`
-			EOF
-        ;;
-
-        ([Cc]el[Oo][Ss]*)
-            read_ascii 5 0 <<-EOF
-				${c5}      .////\\\\\//\\.
-				${c5}     //_         \\\\
-				${c5}    /_  ${c7}##############
-				${c5}   //              *\\
-				${c7}###############    ${c5}|#
-				${c5}   \/              */
-				${c5}    \*   ${c7}##############
-				${c5}     */,        .//
-				${c5}      '_///\\\\\//_'
-			EOF
-        ;;
-
-        ([Cc]ent[Oo][Ss]*)
-            read_ascii 5 <<-EOF
-				${c2} ____${c3}^${c5}____
-				${c2} |\\  ${c3}|${c5}  /|
-				${c2} | \\ ${c3}|${c5} / |
-				${c5}<---- ${c4}---->
-				${c4} | / ${c2}|${c3} \\ |
-				${c4} |/__${c2}|${c3}__\\|
-				${c2}     v
-			EOF
-        ;;
-
-        ([Cc]rystal*[Ll]inux)
-            read_ascii 5 5 <<-EOF
-				${c5}        -//.     
-				${c5}      -//.       
-				${c5}    -//. .       
-				${c5}  -//.  '//-     
-				${c5} /+:      :+/    
-				${c5}  .//'  .//.     
-				${c5}    . .//.       
-				${c5}    .//.         
-				${c5}  .//.           
-			EOF
-        ;;
-
-        ([Dd]ahlia*)
-            read_ascii 1 <<-EOF
-				${c1}      _
-				${c1}  ___/ \\___
-				${c1} |   _-_   |
-				${c1} | /     \ |
-				${c1}/ |       | \\
-				${c1}\\ |       | /
-				${c1} | \ _ _ / |
-				${c1} |___ - ___|
-				${c1}     \\_/
-			EOF
-        ;;
-
-        ([Dd]ebian*)
-            read_ascii 1 <<-EOF
-				${c1}  _____
-				${c1} /  __ \\
-				${c1}|  /    |
-				${c1}|  \\___-
-				${c1}-_
-				${c1}  --_
-			EOF
-        ;;
-
-		([Dd]evuan*)
-			read_ascii 6 <<-EOF
-				${c4} ..:::.      
-				${c4}    ..-==-   
-				${c4}        .+#: 
-				${c4}         =@@ 
-				${c4}      :+%@#: 
-				${c4}.:=+#@@%*:   
-				${c4}#@@@#=:      
-			EOF
-		;;
-
-        ([Dd]ragon[Ff]ly*)
-            read_ascii 1 <<-EOF
-				    ,${c1}_${c7},
-				 ('-_${c1}|${c7}_-')
-				  >--${c1}|${c7}--<
-				 (_-'${c1}|${c7}'-_)
-				     ${c1}|
-				     ${c1}|
-				     ${c1}|
-			EOF
-        ;;
-
-        ([Ee]lementary*)
-            read_ascii <<-EOF
-				${c7}  _______
-				${c7} / ____  \\
-				${c7}/  |  /  /\\
-				${c7}|__\\ /  / |
-				${c7}\\   /__/  /
-				 ${c7}\\_______/
-			EOF
-        ;;
-
-        ([Ee]ndeavour*)
-            read_ascii 4 <<-EOF
-				      ${c1}/${c4}\\
-				    ${c1}/${c4}/  \\${c6}\\
-				   ${c1}/${c4}/    \\ ${c6}\\
-				 ${c1}/ ${c4}/     _) ${c6})
-				${c1}/_${c4}/___-- ${c6}__-
-				 ${c6}/____--
-			EOF
-        ;;
-
-        ([Ff]edora*)
-            read_ascii 4 <<-EOF
-				        ${c4},'''''.
-				       ${c4}|   ,.  |
-				       ${c4}|  |  '_'
-				${c4}  ,....|  |..
-				${c4}.'  ,_;|   ..'
-				${c4}|  |   |  |
-				${c4}|  ',_,'  |
-				${c4} '.     ,'
-				   ${c4}'''''
-			EOF
-        ;;
-
-        ([Ff]ree[Bb][Ss][Dd]*)
-            read_ascii 1 <<-EOF
-				${c1}/\\,-'''''-,/\\
-				${c1}\\_)       (_/
-				${c1}|           |
-				${c1}|           |
-				 ${c1};         ;
-				  ${c1}'-_____-'
-			EOF
-        ;;
-
-        ([Gg]aruda*)
-            read_ascii 4 <<-EOF
-				${c3}         _______
-				${c3}      __/       \\_
-				${c3}    _/     /      \\_
-				${c7}  _/      /_________\\
-				${c7}_/                  |
-				${c2}\\     ____________
-				${c2} \\_            __/
-				${c2}   \\__________/
-			EOF
-        ;;
-
-        ([Gg]entoo*)
-            read_ascii 5 <<-EOF
-				${c5} _-----_
-				${c5}(       \\
-				${c5}\\    0   \\
-				${c7} \\        )
-				${c7} /      _/
-				${c7}(     _-
-				${c7}\\____-
-			EOF
-        ;;
-
-        ([Gg][Nn][Uu]*)
-            read_ascii 3 <<-EOF
-				${c2}    _-\`\`-,   ,-\`\`-_
-				${c2}  .'  _-_|   |_-_  '.
-				${c2}./    /_._   _._\\    \\.
-				${c2}:    _/_._\`:'_._\\_    :
-				${c2}\\:._/  ,\`   \\   \\ \\_.:/
-				${c2}   ,-';'.@)  \\ @) \\
-				${c2}   ,'/'  ..- .\\,-.|
-				${c2}   /'/' \\(( \\\` ./ )
-				${c2}    '/''  \\_,----'
-				${c2}      '/''   ,;/''
-				${c2}         \`\`;'
-			EOF
-        ;;
-
-        ([Gg]uix[Ss][Dd]*|[Gg]uix*)
-            read_ascii 3 <<-EOF
-				${c3}|.__          __.|
-				${c3}|__ \\        / __|
-				   ${c3}\\ \\      / /
-				    ${c3}\\ \\    / /
-				     ${c3}\\ \\  / /
-				      ${c3}\\ \\/ /
-				       ${c3}\\__/
-			EOF
-        ;;
-
-        ([Hh]aiku*)
-            read_ascii 3 <<-EOF
-				${c3}       ,^,
-				 ${c3}     /   \\
-				${c3}*--_ ;     ; _--*
-				${c3}\\   '"     "'   /
-				 ${c3}'.           .'
-				${c3}.-'"         "'-.
-				 ${c3}'-.__.   .__.-'
-				       ${c3}|_|
-			EOF
-        ;;
-
-        ([Hh]ydroOS*)
-			read_ascii 4 <<-EOF
-				${c1}╔╗╔╗──╔╗───╔═╦══╗
-				${c1}║╚╝╠╦╦╝╠╦╦═╣║║══╣
-				${c1}║╔╗║║║╬║╔╣╬║║╠══║
-				${c1}╚╝╚╬╗╠═╩╝╚═╩═╩══╝
-				${c1}───╚═╝
-			EOF
-        ;;
-
-        ([Hh]yperbola*)
-            read_ascii <<-EOF
-				${c7}    |\`__.\`/
-				   ${c7} \____/
-				   ${c7} .--.
-				  ${c7} /    \\
-				 ${c7} /  ___ \\
-				 ${c7}/ .\`   \`.\\
-				${c7}/.\`      \`.\\
-			EOF
-        ;;
-
-        ([Ii]glunix*)
-            read_ascii <<-EOF
-				${c0}       |
-				${c0}       |          |
-				${c0}                  |
-				${c0}  |    ________
-				${c0}  |  /\\   |    \\
-				${c0}    /  \\  |     \\  |
-				${c0}   /    \\        \\ |
-				${c0}  /      \\________\\
-				${c0}  \\      /        /
-				${c0}   \\    /        /
-				${c0}    \\  /        /
-				${c0}     \\/________/
-			EOF
-        ;;
-
-        ([Ii]nstant[Oo][Ss]*)
-            read_ascii <<-EOF
-				${c0} ,-''-,
-				${c0}: .''. :
-				${c0}: ',,' :
-				${c0} '-____:__
-				${c0}       :  \`.
-				${c0}       \`._.'
-			EOF
-        ;;
-
-        ([Ii][Rr][Ii][Xx]*)
-            read_ascii 1 <<-EOF
-				${c1} __
-				${c1} \\ \\   __
-				${c1}  \\ \\ / /
-				${c1}   \\ v /
-				${c1}   / . \\
-				${c1}  /_/ \\ \\
-				${c1}       \\_\\
-			EOF
-        ;;
-
-        ([Kk][Dd][Ee]*[Nn]eon*)
-            read_ascii 6 <<-EOF
-				${c7}   .${c6}__${c7}.${c6}__${c7}.
-				${c6}  /  _${c7}.${c6}_  \\
-				${c6} /  /   \\  \\
-				${c7} . ${c6}|  ${c7}O${c6}  | ${c7}.
-				${c6} \\  \\_${c7}.${c6}_/  /
-				${c6}  \\${c7}.${c6}__${c7}.${c6}__${c7}.${c6}/
-			EOF
-        ;;
-
-        ([Ll]inux*[Ll]ite*|[Ll]ite*)
-            read_ascii 3 <<-EOF
-				${c3}   /\\
-				${c3}  /  \\
-				${c3} / ${c7}/ ${c3}/
-			${c3}> ${c7}/ ${c3}/
-				${c3}\\ ${c7}\\ ${c3}\\
-				 ${c3}\\_${c7}\\${c3}_\\
-				${c7}    \\
-			EOF
-        ;;
-
-        ([Ll]inux*[Mm]int*|[Mm]int)
-            read_ascii 2 <<-EOF
-				${c2} ___________
-				${c2}|_          \\
-				  ${c2}| ${c7}| _____ ${c2}|
-				  ${c2}| ${c7}| | | | ${c2}|
-				  ${c2}| ${c7}| | | | ${c2}|
-				  ${c2}| ${c7}\\__${c7}___/ ${c2}|
-				  ${c2}\\_________/
-			EOF
-        ;;
-
-
-        ([Ll]inux*)
-            read_ascii 4 <<-EOF
-				${c4}    ___
-				   ${c4}(${c7}.. ${c4}|
-				   ${c4}(${c5}<> ${c4}|
-				  ${c4}/ ${c7}__  ${c4}\\
-				 ${c4}( ${c7}/  \\ ${c4}/|
-				${c5}_${c4}/\\ ${c7}__)${c4}/${c5}_${c4})
-				${c5}\/${c4}-____${c5}\/
-			EOF
-        ;;
-
-        ([Mm]ac[Oo][Ss]*|[Dd]arwin*)
-            read_ascii 1 <<-EOF
-				${c2}       .:'
-				${c2}    _ :'_
-				${c3} .'\`_\`-'_\`\`.
-				${c1}:________.-'
-				${c1}:_______:
-				${c4} :_______\`-;
-				${c5}  \`._.-._.'
-			EOF
-        ;;
-
-        ([Mm]ageia*)
-            read_ascii 2 <<-EOF
-				${c6}   *
-				${c6}    *
-				${c6}   **
-				${c7} /\\__/\\
-				${c7}/      \\
-				${c7}\\      /
-				${c7} \\____/
-			EOF
-        ;;
-
-        ([Mm]anjaro*)
-            read_ascii 2 <<-EOF
-				${c2}||||||||| ||||
-				${c2}||||||||| ||||
-				${c2}||||      ||||
-				${c2}|||| |||| ||||
-				${c2}|||| |||| ||||
-				${c2}|||| |||| ||||
-				${c2}|||| |||| ||||
-			EOF
-        ;;
-
-        ([Mm]inix*)
-            read_ascii 4 <<-EOF
-				${c4} ,,        ,,
-				${c4};${c7},${c4} ',    ,' ${c7},${c4};
-				${c4}; ${c7}',${c4} ',,' ${c7},'${c4} ;
-				${c4};   ${c7}',${c4}  ${c7},'${c4}   ;
-				${c4};  ${c7};, '' ,;${c4}  ;
-				${c4};  ${c7};${c4};${c7}',,'${c4};${c7};${c4}  ;
-				${c4}', ${c7};${c4};;  ;;${c7};${c4} ,'
-				 ${c4} '${c7};${c4}'    '${c7};${c4}'
-			EOF
-        ;;
-
-        ([Mm][Xx]*)
-            read_ascii <<-EOF
-				${c7}    \\\\  /
-				 ${c7}    \\\\/
-				 ${c7}     \\\\
-				 ${c7}  /\\/ \\\\
-				${c7}  /  \\  /\\
-				${c7} /    \\/  \\
-			${c7}/__________\\
-			EOF
-        ;;
-
-        ([Nn]et[Bb][Ss][Dd]*)
-            read_ascii 3 <<-EOF
-				${c7}\\\\${c3}\`-______,----__
-				${c7} \\\\        ${c3}__,---\`_
-				${c7}  \\\\       ${c3}\`.____
-				${c7}   \\\\${c3}-______,----\`-
-				${c7}    \\\\
-				${c7}     \\\\
-				${c7}      \\\\
-			EOF
-        ;;
-
-        ([Nn]ix[Oo][Ss]*)
-            read_ascii 4 <<-EOF
-				${c4}  \\\\  \\\\ //
-				${c4} ==\\\\__\\\\/ //
-				${c4}   //   \\\\//
-				${c4}==//     //==
-				${c4} //\\\\___//
-				${c4}// /\\\\  \\\\==
-				${c4}  // \\\\  \\\\
-			EOF
-        ;;
-
-        ([Oo]pen[Bb][Ss][Dd]*)
-            read_ascii 3 <<-EOF
-				${c3}      _____
-				${c3}    \\-     -/
-				${c3} \\_/         \\
-				${c3} |        ${c7}O O${c3} |
-				${c3} |_  <   )  3 )
-				${c3} / \\         /
-				 ${c3}   /-_____-\\
-			EOF
-        ;;
-
-        ([Oo]pen[Ss][Uu][Ss][Ee]*[Tt]umbleweed*)
-            read_ascii 2 <<-EOF
-				${c2}  _____   ______
-				${c2} / ____\\ / ____ \\
-				${c2}/ /    \`/ /    \\ \\
-				${c2}\\ \\____/ /,____/ /
-				${c2} \\______/ \\_____/
-			EOF
-        ;;
-
-        ([Oo]pen[Ss][Uu][Ss][Ee]*|[Oo]pen*SUSE*|SUSE*|suse*)
-            read_ascii 2 <<-EOF
-				${c2}  _______
-				${c2}__|   __ \\
-				${c2}     / .\\ \\
-				${c2}     \\__/ |
-				${c2}   _______|
-				${c2}   \\_______
-				${c2}__________/
-			EOF
-        ;;
-
-        ([Oo]pen[Ww]rt*)
-            read_ascii 1 <<-EOF
-				${c1} _______
-				${c1}|       |.-----.-----.-----.
-				${c1}|   -   ||  _  |  -__|     |
-				${c1}|_______||   __|_____|__|__|
-				${c1} ________|__|    __
-				${c1}|  |  |  |.----.|  |_
-				${c1}|  |  |  ||   _||   _|
-				${c1}|________||__|  |____|
-			EOF
-        ;;
-
-        ([Pp]arabola*)
-            read_ascii 5 <<-EOF
-				${c5}  __ __ __  _
-				${c5}.\`_//_//_/ / \`.
-				${c5}          /  .\`
-				${c5}         / .\`
-				${c5}        /.\`
-				${c5}       /\`
-			EOF
-        ;;
-
-        ([Pp]op!_[Oo][Ss]*)
-            read_ascii 6 <<-EOF
-				${c6}______
-				${c6}\\   _ \\        __
-				 ${c6}\\ \\ \\ \\      / /
-				  ${c6}\\ \\_\\ \\    / /
-				   ${c6}\\  ___\\  /_/
-				   ${c6} \\ \\    _
-				  ${c6} __\\_\\__(_)_
-				  ${c6}(___________)
-			EOF
-        ;;
-
-        ([Pp]ure[Oo][Ss]*)
-            read_ascii <<-EOF
-				${c7} _____________
-				${c7}|  _________  |
-				${c7}| |         | |
-				${c7}| |         | |
-				${c7}| |_________| |
-				${c7}|_____________|
-			EOF
-        ;;
-
-        ([Rr]aspbian*)
-            read_ascii 1 <<-EOF
-				${c2}  __  __
-				${c2} (_\\)(/_)
-				${c1} (_(__)_)
-				${c1}(_(_)(_)_)
-				${c1} (_(__)_)
-				${c1}   (__)
-			EOF
-        ;;
-
-        ([Ss]erenity[Oo][Ss]*)
-            read_ascii 4 <<-EOF
-				${c7}    _____
-				${c1}  ,-${c7}     -,
-				${c1} ;${c7} (       ;
-				${c1}| ${c7}. \_${c1}.,${c7}    |
-				${c1}|  ${c7}o  _${c1} ',${c7}  |
-				${c1} ;   ${c7}(_)${c1} )${c7} ;
-				${c1}  '-_____-${c7}'
-			EOF
-        ;;
-
-        ([Ss]lackware*)
-            read_ascii 4 <<-EOF
-				${c4}   ________
-				${c4}  /  ______|
-				${c4}  | |______
-				${c4}  \\______  \\
-				${c4}   ______| |
-				${c4}| |________/
-				${c4}|____________
-			EOF
-        ;;
-
-        ([Ss]olus*)
-            read_ascii 4 <<-EOF
-				${c6} 
-				${c6}     /|
-				${c6}    / |\\
-				${c6}   /  | \\ _
-				${c6}  /___|__\\_\\
-				${c6} \\         /
-				${c6}  \`-------´
-			EOF
-        ;;
-
-        ([Ss]un[Oo][Ss]|[Ss]olaris*)
-            read_ascii 3 <<-EOF
-				${c3}       .   .;   .
-				${c3}   .   :;  ::  ;:   .
-				${c3}   .;. ..      .. .;.
-				${c3}..  ..             ..  ..
-				${c3} .;,                 ,;.
-			EOF
-        ;;
-
-        ([Uu]buntu*)
-            read_ascii 3 <<-EOF
-				${c3}         _
-				${c3}     ---(_)
-				${c3} _/  ---  \\
-				${c3}(_) |   |
-				 ${c3} \\  --- _/
-				    ${c3} ---(_)
-			EOF
-        ;;
-
-        ([Vv]oid*)
-            read_ascii 2 <<-EOF
-				${c2}    _______
-				${c2} _ \\______ -
-				${c2}| \\  ___  \\ |
-				${c2}| | /   \ | |
-				${c2}| | \___/ | |
-				${c2}| \\______ \\_|
-				${c2} -_______\\
-			EOF
-        ;;
-
-        ([Xx]eonix*)
-            read_ascii 2 <<-EOF
-				${c2}    ___  ___
-				${c2}___ \  \/  / ___
-				${c2}\  \ \    / /  /
-				${c2} \  \/    \/  /
-				${c2}  \    /\    /
-				${c2}   \__/  \__/
-			EOF
-        ;;
-
-        (*)
-
-            [ "$1" ] || {
-                get_ascii "$os"
-                return
-            }
-
-            printf 'error: %s is not currently supported.\n' "$os" >&6
-            printf 'error: Open an issue for support to be added.\n' >&6
-            exit 1
-        ;;
-    esac
-
-    while read -r line; do
-        ascii_height=$((${ascii_height:-0} + 1))
-
-        [ "${#line}" -gt "${ascii_width:-0}" ] &&
-            ascii_width=${#line}
-
-
-    done <<-EOF
- 		$(printf %s "$ascii" | sed 's/\[3.m//g')
-	EOF
-
-    # Add a gap between the ascii art and the information.
-    ascii_width=$((ascii_width + 4))
-
-    {
-        esc_p SGR 1
-        printf '%s' "$ascii"
-        esc_p SGR 0
-        esc_p CUU "$ascii_height"
-    } >&6
-}
 
 main() {
     case $* in
@@ -1514,15 +737,11 @@ main() {
             printf '%s 0.7.0\n' "${0##*/}"
             return 0
         ;;
-
         -d)
-            # Below exec is not run, stderr is shown.
         ;;
-
         '')
             exec 2>/dev/null
         ;;
-
         *)
             cat <<EOF
 ${0##*/}     show system information
@@ -1558,7 +777,7 @@ EOF
     {
  
         set -f
-        set +f -- ${PF_INFO-ascii title os host kernel uptime pkgs memory}
+        set +f -- ${PF_INFO-ascii title os host kernel uptime pkgs memory shell editor de wm palette download_speed}
 
         for info do
             command -v "get_$info" >/dev/null || continue
@@ -1760,7 +979,7 @@ echo -e """
 """
 main "$@"
 echo "Testing download speed..."
-download_speed
+
 if [[ "$1" == "--set-up" ]]; then
     networking
 fi
