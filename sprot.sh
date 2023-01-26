@@ -1,20 +1,9 @@
-
-download_speed() {
-start=$(date +%s)
-wget -q -O /dev/null http://speedtest.wdc01.softlayer.com/downloads/test500.zip
-end=$(date +%s)
-speed=$((500 / (end - start)))
-echo "Download speed: $speed Mb/s"
-}
-
 esc() {
     case $1 in
         CUU) e="${esc_c}[${2}A" ;; # cursor up
         CUD) e="${esc_c}[${2}B" ;; # cursor down
         CUF) e="${esc_c}[${2}C" ;; # cursor right
         CUB) e="${esc_c}[${2}D" ;; # cursor left
-
-        # text formatting
         SGR)
             case ${PF_COLOR:=1} in
                 (1)
@@ -22,17 +11,13 @@ esc() {
                 ;;
 
                 (0)
-                    # colors disabled
                     e=
                 ;;
             esac
         ;;
-
-        # line wrap
         DECAWM)
             case $TERM in
                 (dumb | minix | cons25)
-                    # not supported
                     e=
                 ;;
 
@@ -106,6 +91,14 @@ get_title() {
     hostname=$e$hostname
 
     log "${user}@${hostname}" " " " " >&6
+}
+
+get_download_speed() {
+    start=$(date +%s)
+    wget -q -O /dev/null https://github.com/yourkin/fileupload-fastapi/raw/a85a697cab2f887780b3278059a0dd52847d80f3/tests/data/test-10mb.bin #http://speedtest.wdc01.softlayer.com/downloads/test500.zip
+    end=$(date +%s)
+    speed=$((10 / (end - start)))
+    log "Download speed ${e}${speed} Mb/s" " " " " >&6
 }
 
 get_os() {
@@ -723,8 +716,6 @@ get_palette() {
         esc SGR 0
         palette="$palette$e"
     }
-
-    # Print the palette with a new-line before and afterwards but no seperator.
     printf '\n' >&6
     log "$palette
         " " " " " >&6
@@ -732,25 +723,6 @@ get_palette() {
 
 
 main() {
-    case $* in
-        -v)
-            printf '%s 0.7.0\n' "${0##*/}"
-            return 0
-        ;;
-        -d)
-        ;;
-        '')
-            exec 2>/dev/null
-        ;;
-        *)
-            cat <<EOF
-${0##*/}     show system information
-${0##*/} -d  show stderr (debug mode)
-${0##*/} -v  show version information
-EOF
-            return 0
-        ;;
-    esac
 
     exec 6>&1 >/dev/null
 
@@ -777,7 +749,7 @@ EOF
     {
  
         set -f
-        set +f -- ${PF_INFO-ascii title os host kernel uptime pkgs memory shell editor de wm palette download_speed}
+        set +f -- ${PF_INFO- title os host kernel uptime pkgs memory shell editor de wm download_speed palette}
 
         for info do
             command -v "get_$info" >/dev/null || continue
@@ -978,7 +950,6 @@ echo -e """
     \033[35m╚══════╝╚═╝     ╚═╝  ╚═╝ ╚═════╝    ╚═╝    
 """
 main "$@"
-echo "Testing download speed..."
 
 if [[ "$1" == "--set-up" ]]; then
     networking
